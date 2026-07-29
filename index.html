@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>"The Journey of Music" - Multi-Track Pitch Tracking</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <style>
+        body { font-family: sans-serif; }
+        .chart-title { text-align: center; font-size: 1.5em; margin-bottom: 20px; }
+        .track-path {
+            fill: none;
+            stroke-width: 2px;
+            stroke-opacity: 0.5;
+        }
+        .pitch-marker {
+            stroke: #fff;
+            stroke-width: 2px;
+            fill-opacity: 1; 
+        }
+        .note-duration-bar { 
+            fill-opacity: 0.2;
+        }
+        .axis path, .axis line {
+            stroke: #999; 
+            opacity: 0.5;
+        }
+        #controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .status {
+            margin-left: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="chart-title">"The Journey of Music" - Multi-Track Pitch Tracking</div>
+    
+    <div id="controls">
+        <audio id="music-audio" preload="auto"></audio>
+        
+        <button id="toggle-play" disabled>Loading...</button>
+        <span id="time-display" class="status">Time: 0.0s / 0.0s</span>
+        <span id="status-display" class="status" style="color: blue;">Loading data...</span>
+    </div>
+    
+    <div id="dataviz"></div>
+    <div id="tooltip" style="position: absolute; opacity: 0; background: #333; color: white; padding: 5px; border-radius: 3px; pointer-events: none;"></div>
+
+    <script>
+        const filename = "peer_gynt_suite_no_1_morning_mood";
+        const CSV_PATH = `./data/processed/${filename}_notes_clean.csv`;
+        const WAV_PATH = `./${filename}.mp3`;
+
+        const margin = { top: 60, right: 30, bottom: 60, left: 180 }; 
+        const width = 960 - margin.left - margin.right;
+        const height = 600 - margin.top - margin.bottom;
+        
+        const playHeadRadius = 6;
+        const historyLength = 4; 
+        const defaultInitialPitch = 60; 
+        const durationVisualScale = 100;
+        const EPSILON = 0.005; 
+        
+        const svg = d3.select("#dataviz")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+        const audio = document.getElementById('music-audio');
+        const toggleButton = d3.select("#toggle-play");
+        const timeDisplay = d3.select("#time-display");
+        const statusDisplay = d3.select("#status-display");
+
+        let allTracks = []; 
+        let rawNoteData = []; 
+        let currentPitchByTrack = new Map(); 
+        let pitchTimeHistory = new Map();
+        let initialPitchForTrack = new Map(); 
+        let x, y, colorScale, velocityScale;
+        let animationFrameId;
+
+        function syncVisualization() {
+            const currentTime = audio.currentTime;
+            const duration = isNaN(audio.duration) ? 0 : audio.duration;
+            timeDisplay.text(`Time: ${currentTime.toFixed(2)}s / ${duration.toFixed(2)}s`);
+
+            const maxRadius = velocityScale.range()[1];
+
+            allTracks.forEach(trackID => {
+                
+                let currentStatus = currentPitchByTrack.get(trackID);
+                let trackHistory = pitchTimeHistory.get(trackID);
+                const safeID = currentStatus.safe_id; 
+                
+                const playingNotes = rawNoteData.filter(d => 
+                    d.track === trackID && 
+                    d.time_start_sec <= currentTime + EPSILON && 
+                    d.time_end_sec > currentTime + EPSILON      
+                );
+
+                if (playingNotes.length > 0) {
+                    const activeNote = playingNotes.sort((a, b) => a.time_start_sec - b.time_start_sec)[0]; 
+                    
+                    if (!currentStatus.is_playing || currentStatus.pitch !== activeNote.pitch) {
+                        
+                        const isNewNote = (activeNote.time_start_sec >= currentStatus.end_time - EPSILON);
+                        
+                        currentStatus.pitch = activeNote.pitch;
+                        currentStatus.velocity = activeNote.velocity;
+                        currentStatus.end_time = activeNote.time_end_sec; 
+                        currentStatus.is_playing = true;
+                        if (isNewNote) {
+                             currentStatus.last_update_time = currentTime; 
+                        }
+                    }
+                } else {
+                    if (currentStatus.is_playing) {
+                         currentStatus.is_playing = false;
+                         currentStatus.velocity = 0; 
+                         currentStatus.end_time = currentTime;
+                         currentStatus.last_update_time = currentTime; 
+                    }
+                } 
+                
+                const currentPitch = currentStatus.pitch;
+                const oldestTime = currentTime - historyLength;
+                
+                if (trackHistory.length === 0 || trackHistory.slice(-1)[0].time < currentTime) {
+                    if (trackHistory.length === 0 || trackHistory.slice(-1)[0].pitch !== currentPitch) {
+                        trackHistory.push({ time: currentTime, pitch: currentPitch }); 
+                    } else {
+                        trackHistory.slice(-1)[0].time = currentTime;
+                    }
+                    
+                    while (trackHistory.length > 1 && trackHistory[0].time < oldestTime) {
+                        trackHistory.shift();
+                    }
+                }
+                
+                svg.select(`#path-${safeID}`)
+                   .datum(trackHistory)
+                   .attr('d', d3.line()
+                                 .x(d => x(d.pitch))
+                                 .y(d => y(trackID) + y.bandwidth() / 2)
+                                 .curve(d3.curveMonotoneX) 
+                                 );
+                
+                const marker = svg.select(`#marker-${safeID}`);
+                const durationBar = svg.select(`#duration-${safeID}`);
+
+                const markerX = x(currentStatus.pitch);
+                if (markerX !== undefined) {
+                    marker.attr('cx', markerX) 
+                          .attr('cy', y(trackID) + y.bandwidth() / 2);
+                }
+
+                let markerRadius;
+                let markerOpacity;
+                
+                if (currentStatus.is_playing) {
+                    markerRadius = velocityScale(currentStatus.velocity);
+                    markerOpacity = 1;
+                    
+                    const isTriggering = (currentTime - currentStatus.last_update_time <= 0.1); 
+                    
+                    if (isTriggering) {
+                         markerRadius = Math.min(markerRadius * 1.5, maxRadius); 
+                         marker.attr('fill', d3.interpolateRgb(colorScale(trackID), "yellow")(0.8));
+                    } else {
+                         marker.attr('fill', colorScale(trackID));
+                    }
+                } else {
+                    markerRadius = playHeadRadius / 3; 
+                    markerOpacity = 0.3; 
+                    marker.attr('fill', colorScale(trackID)); 
+                }
+                
+                marker.attr('r', markerRadius)
+                      .attr('opacity', markerOpacity);
+                
+                const trackY = y(trackID);
+                const barHeight = y.bandwidth() * 0.5;
+
+                if (currentStatus.is_playing) {
+                     const xStart = x(currentPitch);
+                     const remainingDuration = currentStatus.end_time - currentTime;
+                     
+                     const barWidth = Math.min(width - maxRadius - xStart, remainingDuration * durationVisualScale); 
+                     
+                     durationBar
+                         .attr('x', xStart) 
+                         .attr('y', trackY + y.bandwidth() / 2 - barHeight / 2)
+                         .attr('width', Math.max(0, barWidth)) 
+                         .attr('height', barHeight)
+                         .attr('fill', colorScale(trackID))
+                         .attr('opacity', 0.8)
+                         .attr("transform", `translate(0, 0)`); 
+
+                } else {
+                    durationBar.attr('width', 0).attr("transform", `translate(0, 0)`);
+                }
+            });
+
+            if (!audio.paused && !audio.ended) {
+                animationFrameId = requestAnimationFrame(syncVisualization);
+            }
+        }
+
+        function togglePlay() {
+            if (audio.paused || audio.ended) {
+                
+                if (audio.ended) {
+                    audio.currentTime = 0;
+                    allTracks.forEach(trackID => {
+                         const initialPitch = initialPitchForTrack.get(trackID) || defaultInitialPitch;
+                         const status = currentPitchByTrack.get(trackID);
+                         pitchTimeHistory.set(trackID, [{ time: 0, pitch: initialPitch }]);
+                         currentPitchByTrack.set(trackID, {
+                             pitch: initialPitch, 
+                             velocity: 0, 
+                             end_time: 0, 
+                             is_playing: false, 
+                             last_update_time: 0,
+                             safe_id: status.safe_id 
+                         });
+                         
+                         const safeID = status.safe_id;
+                         if (x) {
+                            const minRadius = velocityScale.range()[0]; 
+                            svg.select(`#marker-${safeID}`).attr('r', minRadius).attr("opacity", 0.3).attr("cx", x(initialPitch));
+                         }
+                         svg.select(`#path-${safeID}`).datum([{ time: 0, pitch: initialPitch }]);
+                         svg.select(`#duration-${safeID}`).attr('width', 0).attr("transform", `translate(0, 0)`);
+                    });
+                }
+                
+                audio.play().then(() => {
+                    toggleButton.text("Pause Journey");
+                    animationFrameId = requestAnimationFrame(syncVisualization);
+                }).catch(error => {
+                    statusDisplay.style("color", "red").text(`Playback error: ${error.message}`);
+                    console.error("Audio Playback Error:", error);
+                });
+
+            } else {
+                audio.pause();
+                toggleButton.text("Continue Journey");
+                cancelAnimationFrame(animationFrameId);
+            }
+        }
+        
+        function drawVisualization() {
+            statusDisplay.text("Loading CSV data...");
+
+            d3.csv(CSV_PATH).then(function(data) {
+                
+                let noteIdCounter = 0;
+                const displayToSafeIdMap = new Map();
+                
+                rawNoteData = data.map(d => {
+                    const time_start_sec = +d.time_start_sec;
+                    const duration = +d.duration_sec; 
+                    const pitch = +d.pitch;
+                    
+                    let track = (d.instrument || "").trim();
+                    const safe_track_temp = track.replace(/\s*_\s*|\s*-\s*/g, '_').toLowerCase(); 
+                    const match = safe_track_temp.match(/^(.*?)[_-]?(\d+)$/); 
+                    let baseName = safe_track_temp;
+                    let numberSuffix = "";
+                    
+                    if (match && match[2].length > 0) { 
+                        baseName = match[1].trim(); 
+                        numberSuffix = match[2].trim(); 
+                    }
+
+                    let displayName = baseName.replace(/([A-Z])/g, ' $1').trim();
+                    displayName = displayName.replace(/[^\w\s]/g, ' ').trim();
+                    displayName = displayName.replace(/\s+/g, ' ');
+                    displayName = displayName.toLowerCase().split(' ').map((word) => {
+                        return word.length > 0 ? (word.charAt(0).toUpperCase() + word.slice(1)) : word;
+                    }).join(' ');
+                    
+                    if (numberSuffix) {
+                        displayName += ` - ${numberSuffix}`;
+                    }
+                    
+                    let safeID = displayName.replace(/\s/g, '').replace(/-/g, '').toLowerCase(); 
+                    track = displayName; 
+                    
+                    if (track === "") {
+                        track = "Unknown"; 
+                        safeID = "unknown";
+                    }
+
+                    displayToSafeIdMap.set(track, safeID);
+
+                    const velocity = isNaN(+d.velocity) ? 64 : +d.velocity; 
+                    
+                    if (isNaN(time_start_sec) || isNaN(pitch) || time_start_sec < 0) {
+                        return null; 
+                    }
+                    
+                    let time_end_sec = time_start_sec;
+                    if (!isNaN(duration) && duration > EPSILON) {
+                        time_end_sec = time_start_sec + duration;
+                    } else {
+                        time_end_sec = time_start_sec + 0.05; 
+                    }
+
+                    return {
+                        id: noteIdCounter++,
+                        time_start_sec: time_start_sec,
+                        time_end_sec: time_end_sec, 
+                        pitch: pitch,
+                        velocity: velocity,
+                        track: track,      
+                        safe_id: safeID    
+                    };
+                }).filter(d => d !== null)
+                  .sort((a, b) => a.time_start_sec - b.time_start_sec); 
+
+                const allVelocities = rawNoteData.map(d => d.velocity);
+                
+                allTracks = Array.from(new Set(rawNoteData.map(d => d.track))).sort();
+                
+                if (allTracks.length === 0) {
+                      statusDisplay.style("color", "red").text("Error: No valid tracks or note data found.");
+                      return;
+                }
+                
+                const trackDataGroups = d3.group(rawNoteData, d => d.track);
+                initialPitchForTrack = new Map();
+
+                allTracks.forEach(trackID => {
+                    const trackNotes = trackDataGroups.get(trackID);
+                    let initialPitch = defaultInitialPitch; 
+                    if (trackNotes && trackNotes.length > 0) {
+                        const avgPitch = d3.mean(trackNotes, d => d.pitch);
+                        initialPitch = Math.round(avgPitch) || trackNotes[0].pitch;
+                    } 
+                    initialPitchForTrack.set(trackID, initialPitch);
+                    
+                    const safeID = displayToSafeIdMap.get(trackID);
+                    pitchTimeHistory.set(trackID, [{ time: 0, pitch: initialPitch }]);
+                    currentPitchByTrack.set(trackID, {
+                        pitch: initialPitch, 
+                        velocity: 0, 
+                        end_time: 0, 
+                        is_playing: false, 
+                        last_update_time: 0,
+                        safe_id: safeID 
+                    });
+                });
+
+                const FIXED_MIN_PITCH = 0;
+                const FIXED_MAX_PITCH = 127;
+                const pitchBuffer = 5; 
+                
+                const minVel = d3.min(allVelocities) || 0;
+                const maxVel = d3.max(allVelocities) || 127;
+
+                const maxMarkerRadius = playHeadRadius * 2;
+                
+
+                x = d3.scaleLinear()
+                      .domain([FIXED_MIN_PITCH - pitchBuffer, FIXED_MAX_PITCH + pitchBuffer]) 
+                      .range([maxMarkerRadius, width - maxMarkerRadius]); 
+                
+                y = d3.scaleBand().domain(allTracks).range([0, height]).paddingInner(0.5);
+                colorScale = d3.scaleOrdinal(d3.schemeCategory10).domain(allTracks);
+                
+                velocityScale = d3.scaleLinear()
+                    .domain([minVel, maxVel])
+                    .range([playHeadRadius / 3, maxMarkerRadius]); 
+
+                svg.selectAll("*").remove(); 
+                
+                const xAxisScale = d3.scaleLinear()
+                                     .domain(x.domain()) 
+                                     .range([0, width - 2 * maxMarkerRadius]);
+                
+                svg.append("g")
+                    .attr("class", "x axis")
+                    .attr("transform", `translate(${maxMarkerRadius},${height})`)
+                    .call(d3.axisBottom(xAxisScale).ticks(10).tickFormat(d3.format(".0f")));
+                
+                svg.append("text").attr("transform", `translate(${width/2},${height + 40})`).style("text-anchor", "middle").text("Pitch"); 
+                
+                svg.append("g").attr("class", "y axis").call(d3.axisLeft(y).tickSize(0));
+                svg.append("text").attr("transform", "rotate(-90)").attr("y", 0 - margin.left + 15).attr("x", 0 - (height / 2)).attr("dy", "1em").style("text-anchor", "middle").text(""); 
+
+                const barHeight = y.bandwidth() * 0.5;
+                const minRadius = velocityScale.range()[0];
+
+                allTracks.forEach(trackID => {
+                    const initialPitch = initialPitchForTrack.get(trackID);
+                    const safeID = currentPitchByTrack.get(trackID).safe_id; 
+
+                    svg.append("rect").attr("id", `duration-${safeID}`).attr("class", "note-duration-bar").attr("height", barHeight).attr("fill", colorScale(trackID)).attr("opacity", 0.6).attr("width", 0);
+                    svg.append("path").attr("id", `path-${safeID}`).attr("class", "track-path").attr("stroke", colorScale(trackID));
+                    
+                    svg.append("circle").attr("id", `marker-${safeID}`).attr("class", "pitch-marker").attr("r", minRadius).attr("cx", x(initialPitch)).attr("cy", y(trackID) + y.bandwidth() / 2).attr("fill", colorScale(trackID)).attr("opacity", 0.3); 
+                    
+                    svg.append("line").attr("class", "track-divider").attr("x1", 0).attr("x2", width).attr("y1", y(trackID)).attr("y2", y(trackID)).attr("stroke", "#ddd").attr("stroke-dasharray", "2,2");
+                });
+                
+                statusDisplay.text(`Data loaded. Found ${allTracks.length} tracks.`);
+
+            }).catch(error => {
+                statusDisplay.style("color", "red").text(`Error loading CSV: ${error.message}`);
+                console.error("Error loading CSV:", error);
+            });
+        }
+        
+        function initControls() {
+            audio.src = WAV_PATH; 
+            
+            audio.onloadedmetadata = function() {
+                const duration = isNaN(audio.duration) ? 0 : audio.duration;
+                timeDisplay.text(`Time: 0.0s / ${duration.toFixed(2)}s`);
+                statusDisplay.style("color", "green").text("Ready to Play.");
+                toggleButton.attr("disabled", null).text("Start Journey");
+            };
+            
+            audio.onended = function() {
+                cancelAnimationFrame(animationFrameId); 
+                toggleButton.text("Replay Journey");
+                timeDisplay.text(`Time: ${audio.duration.toFixed(2)}s / ${audio.duration.toFixed(2)}s`);
+            };
+            
+            toggleButton.on("click", togglePlay);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            drawVisualization();
+            initControls();
+        });
+
+    </script>
+
+</body>
+</html>
