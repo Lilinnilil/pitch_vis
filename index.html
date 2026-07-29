@@ -50,9 +50,10 @@
     <div id="tooltip" style="position: absolute; opacity: 0; background: #333; color: white; padding: 5px; border-radius: 3px; pointer-events: none;"></div>
 
     <script>
+        // Keep generated note data and audio assets in dedicated project folders.
         const filename = "peer_gynt_suite_no_1_morning_mood";
-        const CSV_PATH = `./data/processed/${filename}_notes_clean.csv`;
-        const WAV_PATH = `./${filename}.mp3`;
+        const CSV_PATH = `./data/processed/csv/${filename}_notes_clean.csv`;
+        const WAV_PATH = `./assets/audio/${filename}.mp3`;
 
         const margin = { top: 60, right: 30, bottom: 60, left: 180 }; 
         const width = 960 - margin.left - margin.right;
@@ -97,6 +98,7 @@
                 let trackHistory = pitchTimeHistory.get(trackID);
                 const safeID = currentStatus.safe_id; 
                 
+                // Find notes that are active at the audio playback position.
                 const playingNotes = rawNoteData.filter(d => 
                     d.track === trackID && 
                     d.time_start_sec <= currentTime + EPSILON && 
@@ -262,6 +264,7 @@
                 let noteIdCounter = 0;
                 const displayToSafeIdMap = new Map();
                 
+                // Convert CSV rows into normalized note objects for D3 rendering.
                 rawNoteData = data.map(d => {
                     const time_start_sec = +d.time_start_sec;
                     const duration = +d.duration_sec; 

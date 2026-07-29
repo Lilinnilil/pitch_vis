@@ -204,6 +204,7 @@ def generate_original_df(midi_file_path):
     denominator = 4
     channel_instruments = {i: 0 for i in range(16)}
 
+    # First pass: collect tempo, meter, and channel program changes.
     for track in midi.tracks:
         abs_tick_track = 0
         for msg in track:
@@ -230,6 +231,7 @@ def generate_original_df(midi_file_path):
                 break
         return time_sec
 
+    # Second pass: pair note-on and note-off events into timed note rows.
     active_notes = {}
     for track_idx, track in enumerate(midi.tracks):
         track_name_raw = next((msg.name for msg in track if msg.type == 'track_name'), f"Track {track_idx}")
@@ -335,6 +337,7 @@ def normalize_classical_tracks(df_clean):
     indices_to_drop = []
     final_part_names = {}
 
+    # Merge duplicate orchestral parts that share almost identical note sequences.
     for normalized_name, group_df in df_clean.groupby('instrument_normalized'):
         unique_parts_raw = sorted(set(group_df['instrument']))
         part_notes = {part: group_df[(group_df['instrument'] == part).values] for part in unique_parts_raw}
@@ -492,8 +495,8 @@ def process_midi(midi_path, output_dir, classical=False, manifest_path=None, upd
 
 def build_parser():
     parser = argparse.ArgumentParser(description="Convert MIDI note events to CSV/JSON files.")
-    parser.add_argument("--midi", default="peer_gynt_suite_no_1_morning_mood.mid", help="Path to a MIDI file.")
-    parser.add_argument("--output-dir", default=os.path.join("data", "processed"), help="Output directory.")
+    parser.add_argument("--midi", default=os.path.join("assets", "midi", "peer_gynt_suite_no_1_morning_mood.mid"), help="Path to a MIDI file.")
+    parser.add_argument("--output-dir", default=os.path.join("data", "processed", "csv"), help="Output directory.")
     parser.add_argument("--classical", action="store_true", help="Normalize classical orchestral track names.")
     parser.add_argument("--batch-dir", help="Process all .mid/.midi files in this directory.")
     parser.add_argument("--manifest", default=os.path.join("data", "manifest.json"), help="Manifest path for batch outputs.")
