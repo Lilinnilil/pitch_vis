@@ -1,103 +1,108 @@
 # Pitch Visualization
 
-An interactive MIDI pitch visualization for synchronizing generated note data with an audio recording.
 
-The project converts MIDI note events into CSV/JSON files with Python, then loads the cleaned CSV and MP3 in a D3-powered HTML page. The current example uses `Peer Gynt Suite No. 1, Morning Mood`.
+The project converts MIDI note events into structured data and visualizes the relationship between pitch, instruments, and time using D3.js.
 
-## Project Structure
+Example: *Peer Gynt Suite No. 1 – Morning Mood*
 
-```text
-.
-+-- assets/
-|   +-- audio/              # MP3 files used by the visualization
-|   +-- midi/               # Source MIDI files
-+-- data/
-|   +-- manifest.json       # Optional list of processed track names
-|   +-- processed/
-|       +-- csv/            # Generated CSV and metadata JSON files
-+-- scripts/
-|   +-- midi_to_csv_clean.py
-+-- index.html              # D3 visualization page
-+-- requirements.txt
-+-- README.md
-```
+![Pitch Visualization](assets/pitch_visualization_overview.png)
+
+
+## Visualization
+
+The visualization represents music in a two-dimensional space.
+
+### Pitch
+
+The horizontal axis represents **pitch**.
+
+Lower notes appear on the left, while higher notes appear on the right.
+
+
+### Instrument
+
+The vertical axis represents **instruments**.
+
+For classical orchestral music, instruments are arranged according to the traditional score order:
+
+
+    Woodwinds
+    Brass
+    Strings
+    Percussion
+
+
+This allows the interaction between different sections of an orchestra to be observed visually.
+
+
+### Note Representation
+
+- **Moving circles** represent individual notes.
+- **Horizontal position** indicates pitch.
+- **Vertical position** indicates instrument.
+- **Trailing tails** represent note duration.
+- **Horizontal traces** show recent pitch activity within a time window.
+
+
+## How It Works
+
+1. MIDI files are processed with Python to extract note events.
+2. The processed CSV data is loaded by a D3.js visualization.
+3. Audio playback time drives the animation and synchronizes the visualization.
+
 
 ## Requirements
 
-- Python 3.11+
-- A modern browser
-- Internet access for the D3 CDN used by `index.html`
+-   Python 3.11+
 
-Install Python dependencies:
+## Run
+
+Install dependencies:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-## Generate MIDI Data
+Process MIDI file
 
-Run the default conversion for the included MIDI file:
-
-```bash
-python scripts/midi_to_csv_clean.py --classical --update-manifest
+``` bash
+python scripts/midi_to_csv_clean.py \
+    --midi assets/midi/YOUR_FILE_NAME.mid \
+    --classical \
+    --output-dir data/processed/csv
 ```
 
-This reads:
+Here, for classical orchestral files, we add a:
 
-```text
-assets/midi/peer_gynt_suite_no_1_morning_mood.mid
-```
+    --classical
 
-and writes:
+to enable classical instrument ordering arranged in groups, like in the traditional score. In other cases, it can be not added to show the original instruments' name.
 
-```text
-data/processed/csv/peer_gynt_suite_no_1_morning_mood_notes.csv
-data/processed/csv/peer_gynt_suite_no_1_morning_mood_notes_clean.csv
-data/processed/csv/peer_gynt_suite_no_1_morning_mood_info.json
-```
 
-To process another MIDI file:
 
-```bash
-python scripts/midi_to_csv_clean.py --midi assets/midi/your_file.mid --output-dir data/processed/csv
-```
+Start a local server:
 
-For classical orchestral files, add:
-
-```bash
---classical
-```
-
-## Run the Visualization
-
-Start a local static server from the project root:
-
-```bash
+``` bash
 python -m http.server 8000
 ```
 
-Open:
+Then open the live server.
 
-```text
-http://localhost:8000/index.html
+
+## Project Structure
+
 ```
-
-The page loads:
-
-```text
-data/processed/csv/peer_gynt_suite_no_1_morning_mood_notes_clean.csv
-assets/audio/peer_gynt_suite_no_1_morning_mood.mp3
+.
+├── assets/
+│   ├── audio/
+│   └── midi/
+├── data/
+│   └── processed/
+├── scripts/
+│   └── midi_to_csv_clean.py
+└── index.html
 ```
-
-## How It Works
-
-1. `scripts/midi_to_csv_clean.py` parses MIDI timing, tempo, note pitch, velocity, track, and instrument data.
-2. It writes raw note rows and cleaned note rows to CSV.
-3. `index.html` loads the cleaned CSV with D3.
-4. The MP3 playback time drives the animated pitch markers and duration bars.
-
 ## Notes
-
-- The visualization expects the CSV and MP3 filenames to share the same base name.
-- If you change the demo file, update the `filename` constant in `index.html`.
-- The browser may block audio autoplay, so playback starts from the page button.
+ - The CSV and MP3 files should share the same base filename.
+ - To visualize another piece, update the filename configuration in index.html.
+ - Browser autoplay restrictions may require starting playback manually.
