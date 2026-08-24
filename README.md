@@ -7,7 +7,7 @@ Example: *Peer Gynt Suite No. 1 – Morning Mood*
 
 ![Pitch Visualization](assets/peer_gynt.jpg)
 
-Watch the [demo video](assets/demo.mp4)
+[demo video](assets/demo.mp4)
 
 ## Visualization
 
