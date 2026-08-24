@@ -1,4 +1,4 @@
-# Pitch Visualization
+# 🎻Pitch Visualization
 
 
 The project converts MIDI note events into structured data and visualizes the relationship between pitch, instruments, and time using D3.js.
@@ -13,14 +13,14 @@ Example: *Peer Gynt Suite No. 1 – Morning Mood*
 
 The visualization represents music in a two-dimensional space.
 
-### Pitch
+### 1. Pitch
 
 The horizontal axis represents **pitch**.
 
 Lower notes appear on the left, while higher notes appear on the right.
 
 
-### Instrument
+### 2. Instrument
 
 The vertical axis represents **instruments**.
 
@@ -36,13 +36,13 @@ For classical orchestral music, instruments are arranged according to the tradit
 This allows the interaction between different sections of an orchestra to be observed visually.
 
 
-### Note Representation
+### 3. Note Representation
 
-- **Moving circles** represent individual notes.
-- **Horizontal position** indicates pitch.
-- **Vertical position** indicates instrument.
-- **Trailing tails** represent note duration.
-- **Horizontal traces** show recent pitch activity within a time window.
+- **Moving circles** - individual notes.
+- **Horizontal position** - pitch
+- **Vertical position** - instrument.
+- **Trailing tails** - note duration.
+- **Horizontal traces** - recent pitch activity within a time window.
 
 
 ## How It Works
