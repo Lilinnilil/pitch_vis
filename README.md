@@ -5,7 +5,7 @@ The project converts MIDI note events into structured data and visualizes the re
 
 Example: *Peer Gynt Suite No. 1 – Morning Mood*
 
-![Pitch Visualization](assets/pitch_visualization_overview.png)
+![Pitch Visualization](assets/peer_gynt.jpg)
 
 
 ## Visualization
@@ -104,5 +104,5 @@ Then open the live server.
 ```
 ## Notes
  - The CSV and MP3 files should share the same base filename.
- - To visualize another piece, update the filename configuration in index.html.
+ - To visualize another piece, update the filename configuration in `index.html`.
  - Browser autoplay restrictions may require starting playback manually.
