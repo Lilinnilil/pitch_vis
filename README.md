@@ -1,7 +1,7 @@
 # 🎻Pitch Visualization
 
 
-The project converts MIDI note events into structured data and visualizes the relationship between pitch, instruments, and time using D3.js.
+The project converts MIDI note events into structured data and visualizes the relationship between pitch, instruments, and time dynamically using D3.js.
 
 Example: *Peer Gynt Suite No. 1 – Morning Mood*
 
